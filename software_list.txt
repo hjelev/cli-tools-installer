@@ -1,0 +1,14 @@
+npm
+btop
+dog
+htop
+exa
+bat
+fd-find
+jq
+duf
+zsh
+httpie
+is-up-cli
+surge
+diff2html-cli

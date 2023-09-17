@@ -1,0 +1,9 @@
+btop
+dog
+htop
+exa
+bat
+fd-find
+jq
+bat
+duf
