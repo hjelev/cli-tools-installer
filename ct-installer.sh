@@ -7,158 +7,115 @@ NC=$(tput sgr0)  # Reset text color
 CHECK_MARK="✔"
 CROSS_MARK="✖"
 
-# Define the path to the software list file
-software_list_file="software_list.txt"
-
-# Check if the input file exists
-if [ ! -f "$software_list_file" ]; then
-    echo "Error: Software list file '$software_list_file' not found."
-    exit 1
-fi
-
 # Function to check if a package is installed via APT
-check_apt_package() {
-    if dpkg -l | grep -q "ii  $1 "; then
-        return 0
-    fi
-    return 1
-}
-
-# Function to check if a package is installed via npm
-check_npm_package() {
-    if npm ls -g "$1" >/dev/null 2>&1; then
-        return 0
-    fi
-    return 1
-}
-
-# Function to check if a Snap package is installed
-check_snap_package() {
-    if snap list | grep -q "$1"; then
-        return 0
-    fi
-    return 1
+is_installed_apt() {
+  dpkg -l "$1" 2>/dev/null | grep -q "^ii"
 }
 
 # Function to install a package via APT
-install_apt_package() {
-    sudo apt-get update
-    sudo apt-get install -y "$1"
-}
-
-# Function to install a package via npm
-install_npm_package() {
-    sudo npm install -g "$1"
-}
-
-# Function to install a package via Snap
-install_snap_package() {
-    sudo snap install "$1"
+install_package_apt() {
+  sudo apt-get install -y "$1"
 }
 
 # Function to uninstall a package via APT
-uninstall_apt_package() {
-    sudo apt-get remove -y "$1"
+uninstall_package_apt() {
+  sudo apt-get remove -y "$1"
 }
 
-# Function to uninstall a package via npm
-uninstall_npm_package() {
-    sudo npm uninstall -g "$1"
+# Function to check if a package is installed via Snap
+is_installed_snap() {
+  snap list | grep -q "$1"
+}
+
+# Function to install a package via Snap
+install_package_snap() {
+  sudo snap install "$1"
 }
 
 # Function to uninstall a package via Snap
-uninstall_snap_package() {
-    sudo snap remove "$1"
+uninstall_package_snap() {
+  sudo snap remove "$1"
 }
 
-# Redirect standard input to file descriptor 3
-exec 3<&0
+# Function to display the menu
+display_menu() {
+  echo -e "Menu:"
+  echo "a/A. Install all packages that are not installed"
+  echo "Enter. Exit"
+}
+
+# Function to display the software status
+display_status() {
+  echo "Software Status:"
+  software_names=()
+  index=0
+  while IFS= read -r software; do
+    software_names+=("$software")
+    if is_installed_apt "$software"; then
+      echo -e "[$((index+1))] [${GREEN}${CHECK_MARK}${NC}] $software is installed (via APT)"
+    elif is_installed_snap "$software"; then
+      echo -e "[$((index+1))] [${GREEN}${CHECK_MARK}${NC}] $software is installed (via Snap)"
+    else
+      echo -e "[$((index+1))] [${RED}${CROSS_MARK}${NC}] $software is not installed"
+    fi
+    ((index++))
+  done < "software_list.txt"
+}
+
+# Function to manage a package
+manage_package() {
+  local software="$1"
+  if is_installed_apt "$software"; then
+    read -p "Do you want to uninstall $software? (y/n): " choice
+    if [ "$choice" == "y" ] || [ "$choice" == "Y" ]; then
+      uninstall_package_apt "$software"
+      echo "Uninstalled: $software"
+    else
+      echo "No changes made to $software."
+    fi
+  elif is_installed_snap "$software"; then
+    read -p "Do you want to uninstall $software? (y/n): " choice
+    if [ "$choice" == "y" ] || [ "$choice" == "Y" ]; then
+      uninstall_package_snap "$software"
+      echo "Uninstalled: $software"
+    else
+      echo "No changes made to $software."
+    fi
+  else
+    echo "Installing $software..."
+    if install_package_apt "$software"; then
+      echo "Installed: $software (via APT)"
+    elif install_package_snap "$software"; then
+      echo "Installed: $software (via Snap)"
+    else
+      echo "Failed to install $software."
+    fi
+  fi
+}
 
 while true; do
-    # Arrays to store software names and installation methods
-    software_names=()
-    install_methods=()
-    
-    # Read the software list file and store the lines in an array
-    mapfile -t software_names < <(sort "$software_list_file")
+  # Display the software status
+  display_status
 
-    for software_name in "${software_names[@]}"; do
-        # Check if the software is installed via APT
-        if check_apt_package "$software_name"; then
-            install_methods+=("${GREEN}${CHECK_MARK}${NC}")
-            continue
-        fi
-        
-        # Check if the software is installed via npm
-        if check_npm_package "$software_name"; then
-            install_methods+=("${GREEN}${CHECK_MARK}${NC}")
-            continue
-        fi
-        
-        # Check if the software is available as a Snap
-        if check_snap_package "$software_name"; then
-            install_methods+=("${GREEN}${CHECK_MARK}${NC}")
-            continue
-        fi
-        
-        # If it's not found in APT, npm, or Snap, then it's not installed
-        install_methods+=("${RED}${CROSS_MARK}${NC}")
-    done
+  # Display the menu
+  display_menu
 
-    # Display software list with numbers
-    echo "Software List:"
-    for i in "${!software_names[@]}"; do
-        echo "$((i+1)). ${software_names[$i]} (Status: ${install_methods[$i]})"
-    done
+  # Prompt the user for their choice
+  read -p "Enter your choice: " choice
 
-    # Offer options to install or uninstall software or install all not installed
-    read -p "Enter the number of the software to manage, 'A' to install all not installed, 'S' to skip, or press Enter to exit: " choice
-
-    if [ -z "$choice" ]; then
-        break
-    elif [[ "${choice^^}" == "S" ]]; then
-        break
-    elif [[ "${choice^^}" == "A" ]]; then
-        for ((i=0; i<${#software_names[@]}; i++)); do
-            if [[ "${install_methods[$i]}" == "${RED}${CROSS_MARK}${NC}" ]]; then
-                software_name="${software_names[$i]}"
-                if [ -n "$(apt-cache search --names_only "^$software_name\$")" ]; then
-                    install_apt_package "$software_name"
-                elif [ -n "$(npm info -g "$software_name" 2>/dev/null)" ]; then
-                    install_npm_package "$software_name"
-                else
-                    install_snap_package "$software_name"
-                fi
-            fi
-        done
-    elif [[ "$choice" =~ ^[0-9]+$ ]]; then
-        index=$((choice - 1))
-        software_name="${software_names[$index]}"
-        install_method="${install_methods[$index]}"
-        
-        if [[ "${install_method}" == "${GREEN}${CHECK_MARK}${NC}" ]]; then
-            read -p "$software_name is installed. Do you want to uninstall it? (y/n): " uninstall_choice
-            if [ "$uninstall_choice" == "y" ]; then
-                if check_apt_package "$software_name"; then
-                    uninstall_apt_package "$software_name"
-                else
-                    uninstall_npm_package "$software_name"
-                fi
-            fi
-        elif [[ "${install_method}" == "${RED}${CROSS_MARK}${NC}" ]]; then
-            read -p "Do you want to install $software_name? (y/n): " install_choice
-            if [ "$install_choice" == "y" ]; then
-                if [ -n "$(apt-cache search --names_only "^$software_name\$")" ]; then
-                    install_apt_package "$software_name"
-                elif [ -n "$(npm info -g "$software_name" 2>/dev/null)" ]; then
-                    install_npm_package "$software_name"
-                else
-                    install_snap_package "$software_name"
-                fi
-            fi
-        fi
-    fi
+  # Exit if the user presses Enter
+  if [ -z "$choice" ]; then
+    echo "Exiting."
+    break
+  elif [ "$choice" == "a" ] || [ "$choice" == "A" ]; then
+    # Read software names from the file and install all packages that are not installed
+    while IFS= read -r software; do
+      manage_package "$software"
+    done < "software_list.txt"
+  elif (( choice >= 1 && choice <= index )); then
+    # Manage the selected package by number
+    manage_package "${software_names[choice-1]}"
+  else
+    echo "Invalid choice. Please try again."
+  fi
 done
-
-# Close file descriptor 3
-exec 3<&-
