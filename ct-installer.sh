@@ -39,9 +39,7 @@ uninstall_package_snap() {
 
 # Function to display the menu
 display_menu() {
-  echo -e "Menu:"
-  echo "a/A. Install all packages that are not installed"
-  echo "Enter. Exit"
+  echo -n "Enter a (number) to manage, (a) to install all, or (Enter) to exit:"
 }
 
 # Function to display the software status
@@ -59,7 +57,7 @@ display_status() {
       echo -e "[$((index+1))] [${RED}${CROSS_MARK}${NC}] $software is not installed"
     fi
     ((index++))
-  done < "software_list.txt"
+  done < <(sort "software_list.txt")
 }
 
 # Function to manage a package
@@ -101,7 +99,7 @@ while true; do
   display_menu
 
   # Prompt the user for their choice
-  read -p "Enter your choice: " choice
+  read -p " " choice
 
   # Exit if the user presses Enter
   if [ -z "$choice" ]; then
@@ -109,9 +107,16 @@ while true; do
     break
   elif [ "$choice" == "a" ] || [ "$choice" == "A" ]; then
     # Read software names from the file and install all packages that are not installed
+    all_installed=true
     while IFS= read -r software; do
-      manage_package "$software"
-    done < "software_list.txt"
+      if ! is_installed_apt "$software" && ! is_installed_snap "$software"; then
+        manage_package "$software"
+        all_installed=false
+      fi
+    done < <(sort "software_list.txt")
+    if "$all_installed"; then
+      echo "All software is already installed."
+    fi
   elif (( choice >= 1 && choice <= index )); then
     # Manage the selected package by number
     manage_package "${software_names[choice-1]}"

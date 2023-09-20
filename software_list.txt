@@ -9,6 +9,5 @@ jq
 duf
 zsh
 httpie
-is-up-cli
-surge
-diff2html-cli
+icdiff
+git
